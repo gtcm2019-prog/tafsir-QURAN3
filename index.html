@@ -773,24 +773,35 @@
     return results;
   }
 
-  function findTafsirForAyah(data, surah, ayah) {
+
+
+  function findAyahRange(data, surah, ayah) {
+    const ayahKey = `${surah}:${ayah}`;
     if (!data) return null;
 
-    const ayahKey = `${surah}:${ayah}`;
+    // Cherche directement
+    if (data[ayahKey]) return { start: ayah, end: ayah, text: data[ayahKey].text };
 
-    // Cherche directement la clé exacte
-    if (data[ayahKey]) {
-      return data[ayahKey];
-    }
-
-    // Remonte vers les versets précédents
+    // Remonte pour trouver le lot
     for (let a = ayah - 1; a >= 1; a--) {
       const key = `${surah}:${a}`;
       if (data[key]) {
-        return data[key];
+        // Détecte la fin du lot
+        let endAyah = a;
+        const referenceText = data[key].text;
+        
+        for (let b = a + 1; b <= 300; b++) {
+          const nextKey = `${surah}:${b}`;
+          if (data[nextKey] && data[nextKey].text === referenceText) {
+            endAyah = b;
+          } else {
+            break;
+          }
+        }
+        
+        return { start: a, end: endAyah, text: referenceText };
       }
     }
-
     return null;
   }
 
@@ -800,21 +811,26 @@
 
     for (const source of TAFSIR_SOURCES) {
       const data = results[source];
-      const tafsir = findTafsirForAyah(data, surah, ayah);
+      const range = findAyahRange(data, surah, ayah);
 
-      if (!tafsir) continue;
+      if (!range) continue;
 
       foundAny = true;
       const sourceName = getSourceName(source);
+      
+      // Affiche le range en gras
+      const rangeText = range.start === range.end 
+        ? `الآية ${surah}:${range.start}`
+        : `الآيات ${surah}:${range.start} - ${surah}:${range.end}`;
 
       html += `
         <div class="tafsir-item">
           <h3 class="tafsir-item-title">${sourceName}</h3>
-          <div class="tafsir-item-content">
-            ${tafsir.text}
+          <div style="font-weight: bold; color: var(--gold); margin-bottom: 16px; direction: rtl;">
+            ${rangeText}
           </div>
-          <div class="tafsir-verse-ref">
-            الآية ${surah}:${ayah}
+          <div class="tafsir-item-content">
+            ${range.text}
           </div>
         </div>
       `;
@@ -823,7 +839,7 @@
     if (foundAny) {
       container.innerHTML = html;
     } else {
-      container.innerHTML = '<div class="tafsir-empty">لا يوجد تفسير متاح لهذه الآية</div>';
+      container.innerHTML = '<div class="tafsir-empty">تفسير الآية غير متوفر</div>';
     }
   }
 
