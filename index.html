@@ -533,7 +533,7 @@
       line-height: 1.9;
       color: var(--text);
       direction: rtl;
-      text-align: right;
+      text-align: justify;
     }
 
     .tafsir-item-content div {
@@ -742,10 +742,34 @@
 
     try {
       const results = await loadAllTafsirs(surah);
-      displayTafsirs(results, surah, ayah, container);
+      await displayTafsirs(results, surah, ayah, container);
     } catch (err) {
       console.error('Tafsir load error:', err);
       container.innerHTML = '<div class="tafsir-empty">⚠ خطأ في تحميل التفاسير</div>';
+    }
+  }
+
+  async function getQuranText(surah, startAyah, endAyah) {
+    try {
+      const verses = [];
+      const timeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout')), 5000)
+      );
+      
+      for (let a = startAyah; a <= endAyah; a++) {
+        const response = await Promise.race([
+          fetch(`https://api.alquran.cloud/v1/ayah/${surah}:${a}`),
+          timeout
+        ]);
+        if (response.ok) {
+          const data = await response.json();
+          verses.push(data.data.text);
+        }
+      }
+      return verses.length > 0 ? verses.join(' ') : null;
+    } catch (err) {
+      console.warn('Could not fetch Quran text:', err);
+      return null;
     }
   }
 
@@ -773,57 +797,92 @@
     return results;
   }
 
-  function findTafsirForAyah(data, surah, ayah) {
+
+
+  function findAyahRange(data, surah, ayah) {
+    const ayahKey = `${surah}:${ayah}`;
     if (!data) return null;
 
-    const ayahKey = `${surah}:${ayah}`;
+    // Cherche directement
+    if (data[ayahKey]) return { start: ayah, end: ayah, text: data[ayahKey].text };
 
-    // Cherche directement la clé exacte
-    if (data[ayahKey]) {
-      return data[ayahKey];
-    }
-
-    // Remonte vers les versets précédents
+    // Remonte pour trouver le lot
     for (let a = ayah - 1; a >= 1; a--) {
       const key = `${surah}:${a}`;
       if (data[key]) {
-        return data[key];
+        // Détecte la fin du lot
+        let endAyah = a;
+        const referenceText = data[key].text;
+        
+        for (let b = a + 1; b <= 300; b++) {
+          const nextKey = `${surah}:${b}`;
+          if (data[nextKey] && data[nextKey].text === referenceText) {
+            endAyah = b;
+          } else {
+            break;
+          }
+        }
+        
+        return { start: a, end: endAyah, text: referenceText };
       }
     }
-
     return null;
   }
 
-  function displayTafsirs(results, surah, ayah, container) {
+  async function displayTafsirs(results, surah, ayah, container) {
     let html = '';
     let foundAny = false;
 
     for (const source of TAFSIR_SOURCES) {
       const data = results[source];
-      const tafsir = findTafsirForAyah(data, surah, ayah);
+      const range = findAyahRange(data, surah, ayah);
 
-      if (!tafsir) continue;
+      if (!range) continue;
 
       foundAny = true;
       const sourceName = getSourceName(source);
+      
+      // Charger le texte quranique
+      let quranText = await getQuranText(surah, range.start, range.end);
+      if (quranText === undefined || quranText === 'undefined' || quranText === null) {
+        quranText = '';
+      }
+      
+      // Affiche le range en gras
+      const rangeText = range.start === range.end 
+        ? `الآية ${surah}:${range.start}`
+        : `الآيات ${surah}:${range.start} - ${surah}:${range.end}`;
 
-      html += `
+      let tafsirHtml = `
         <div class="tafsir-item">
           <h3 class="tafsir-item-title">${sourceName}</h3>
-          <div class="tafsir-item-content">
-            ${tafsir.text}
+          <div style="font-weight: 900; color: var(--gold); margin-bottom: 8px; direction: rtl; font-size: 16px;">
+            ${rangeText}
           </div>
-          <div class="tafsir-verse-ref">
-            الآية ${surah}:${ayah}
+      `;
+
+      if (quranText.trim().length > 0) {
+        tafsirHtml += `
+          <div style="font-weight: 900; color: var(--text); margin-bottom: 16px; direction: rtl; font-size: 16px; line-height: 2; border-left: 4px solid var(--gold); padding-left: 12px;">
+            ${quranText}
+          </div>
+        `;
+      }
+
+      tafsirHtml += `
+          <div class="tafsir-item-content">
+            ${range.text ? range.text : ''}
           </div>
         </div>
       `;
+
+      html += tafsirHtml;
     }
 
     if (foundAny) {
       container.innerHTML = html;
     } else {
-      container.innerHTML = '<div class="tafsir-empty">لا يوجد تفسير متاح لهذه الآية</div>';
+      container.innerHTML = '<div class="tafsir-empty">لا توجد تفاسير متاحة</div>';
     }
   }
 
