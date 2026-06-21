@@ -843,27 +843,40 @@
       const sourceName = getSourceName(source);
       
       // Charger le texte quranique
-      const quranText = await getQuranText(surah, range.start, range.end);
+      let quranText = await getQuranText(surah, range.start, range.end);
+      if (quranText === undefined || quranText === 'undefined' || quranText === null) {
+        quranText = '';
+      }
       
       // Affiche le range en gras
       const rangeText = range.start === range.end 
         ? `الآية ${surah}:${range.start}`
         : `الآيات ${surah}:${range.start} - ${surah}:${range.end}`;
 
-      html += `
+      let tafsirHtml = `
         <div class="tafsir-item">
           <h3 class="tafsir-item-title">${sourceName}</h3>
           <div style="font-weight: 900; color: var(--gold); margin-bottom: 8px; direction: rtl; font-size: 16px;">
             ${rangeText}
           </div>
-          ${quranText && quranText !== 'undefined' ? `<div style="font-weight: 900; color: var(--text); margin-bottom: 16px; direction: rtl; font-size: 16px; line-height: 2; border-left: 4px solid var(--gold); padding-left: 12px;">
+      `;
+
+      if (quranText.trim().length > 0) {
+        tafsirHtml += `
+          <div style="font-weight: 900; color: var(--text); margin-bottom: 16px; direction: rtl; font-size: 16px; line-height: 2; border-left: 4px solid var(--gold); padding-left: 12px;">
             ${quranText}
-          </div>` : ''}
+          </div>
+        `;
+      }
+
+      tafsirHtml += `
           <div class="tafsir-item-content">
             ${range.text}
           </div>
         </div>
       `;
+
+      html += tafsirHtml;
     }
 
     if (foundAny) {
